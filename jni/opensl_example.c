@@ -30,10 +30,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <android/log.h>
 #include "opensl_io.h"
 
-#define BUFFERFRAMES 1024
-#define VECSAMPS_MONO 64
-#define VECSAMPS_STEREO 128
-#define SR 44100
+#define SR 48000
+#define BUFFERFRAMES 	480	//(SR*10/1000)			//10ms
+#define VECSAMPS_MONO 	480	//(SR*10/1000)			//10ms Mono
+#define VECSAMPS_STEREO VECSAMPS_MONO*2				//10ms Stereo
 
 static int on;
 void start_process() {

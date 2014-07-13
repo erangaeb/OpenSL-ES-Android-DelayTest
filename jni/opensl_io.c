@@ -411,12 +411,16 @@ double android_GetTimestamp(OPENSL_STREAM *p){
 // this callback handler is called every time a buffer finishes recording
 void bqRecorderCallback(SLAndroidSimpleBufferQueueItf bq, void *context)
 {
+  static int iCntRecorderCB = 0;
   OPENSL_STREAM *p = (OPENSL_STREAM *) context;
+  iCntRecorderCB++;
+  LOGD("bqRecorderCallback(): %d", iCntRecorderCB);
   notifyThreadLock(p->inlock);
 }
  
 // gets a buffer of size samples from the device
 int android_AudioIn(OPENSL_STREAM *p,float *buffer,int size){
+  static int iCntEnqueue = 0;
   short *inBuffer;
   int i, bufsamps = p->inBufSamples, index = p->currentInputIndex;
   if(p == NULL || bufsamps ==  0) return 0;
@@ -430,6 +434,8 @@ int android_AudioIn(OPENSL_STREAM *p,float *buffer,int size){
       p->currentInputBuffer = (p->currentInputBuffer ? 0 : 1);
       index = 0;
       inBuffer = p->inputBuffer[p->currentInputBuffer];
+      iCntEnqueue++;
+      LOGD("android_AudioIn(): %d", iCntEnqueue);
     }
     buffer[i] = (float) inBuffer[index++]*CONVMYFLT;
   }
