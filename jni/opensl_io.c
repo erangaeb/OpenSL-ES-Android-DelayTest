@@ -28,8 +28,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "opensl_io.h"
-#define CONV16BIT 32768
-#define CONVMYFLT (1./32768.)
 
 static void* createThreadLock(void);
 static int waitThreadLock(void *lock);
@@ -414,12 +412,17 @@ void bqRecorderCallback(SLAndroidSimpleBufferQueueItf bq, void *context)
   static int iCntRecorderCB = 0;
   OPENSL_STREAM *p = (OPENSL_STREAM *) context;
   iCntRecorderCB++;
-  LOGD("bqRecorderCallback(): %d", iCntRecorderCB);
+  //LOGD("bqRecorderCallback(): %d", iCntRecorderCB);
   notifyThreadLock(p->inlock);
 }
  
 // gets a buffer of size samples from the device
 int android_AudioIn(OPENSL_STREAM *p,float *buffer,int size){
+  extern int timestamp;
+  int minutes;
+  int seconds;
+  int mseconds;
+
   static int iCntEnqueue = 0;
   short *inBuffer;
   int i, bufsamps = p->inBufSamples, index = p->currentInputIndex;
@@ -435,7 +438,13 @@ int android_AudioIn(OPENSL_STREAM *p,float *buffer,int size){
       index = 0;
       inBuffer = p->inputBuffer[p->currentInputBuffer];
       iCntEnqueue++;
-      LOGD("android_AudioIn(): %d", iCntEnqueue);
+
+      mseconds = timestamp*10 / (SR/100);
+      seconds  = mseconds / 1000;
+      mseconds -= seconds * 1000;
+      minutes  = seconds / 60;
+      seconds  -= minutes * 60;
+      LOGD("android_AudioIn(): %d. timestamp=%d:%02d:%03d", iCntEnqueue, minutes, seconds, mseconds );
     }
     buffer[i] = (float) inBuffer[index++]*CONVMYFLT;
   }

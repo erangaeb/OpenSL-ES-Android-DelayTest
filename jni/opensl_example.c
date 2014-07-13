@@ -28,30 +28,107 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <android/log.h>
+#include <stdio.h>
 #include "opensl_io.h"
 
-#define SR 48000
 #define BUFFERFRAMES 	480	//(SR*10/1000)			//10ms
 #define VECSAMPS_MONO 	480	//(SR*10/1000)			//10ms Mono
 #define VECSAMPS_STEREO VECSAMPS_MONO*2				//10ms Stereo
 
+#define FRAME_SIZE	BUFFERFRAMES
+
 static int on;
-void start_process() {
-  OPENSL_STREAM  *p;
-  int samps, i, j;
-  float  inbuffer[VECSAMPS_MONO], outbuffer[VECSAMPS_STEREO];
-  p = android_OpenAudioDevice(SR,1,2,BUFFERFRAMES);
-  if(p == NULL) return; 
-  on = 1;
-  while(on) {
-   samps = android_AudioIn(p,inbuffer,VECSAMPS_MONO);
-   for(i = 0, j=0; i < samps; i++, j+=2)
-     outbuffer[j] = outbuffer[j+1] = inbuffer[i];
-   android_AudioOut(p,outbuffer,samps*2); 
-  }  
-  android_CloseAudioDevice(p);
+int timestamp;
+void start_process()
+{
+	FILE *RxInFile,*RxOutFile,*TxInFile,*TxOutFile;
+	short int RxIn[FRAME_SIZE],TxIn[FRAME_SIZE],RxOut[FRAME_SIZE],TxOut[FRAME_SIZE];
+
+	FILE *DelayAnalysisFile;
+	short int MixIn[FRAME_SIZE*2];
+	int silenceFilling = 0;
+
+	OPENSL_STREAM  *p;
+	int samps, i, j;
+	float  inbuffer[VECSAMPS_MONO], outbuffer[VECSAMPS_STEREO];
+	float  sample;
+	p = android_OpenAudioDevice(SR,1,2,BUFFERFRAMES);
+	if(p == NULL){
+		LOGE("android_OpenAudioDevice(): failed.");
+		return;
+	}
+	on = 1;
+
+	RxInFile = fopen("/sdcard/rxin.pcm", "rb");
+	TxInFile = fopen("/sdcard/txin.pcm", "wb");
+	if ((RxInFile == NULL) || (TxInFile == NULL)){
+		LOGE("File Operation Failed.");
+		if(p == NULL){
+			android_CloseAudioDevice(p);
+		}
+		return;
+	}
+	DelayAnalysisFile = fopen("/sdcard/mix.pcm", "wb");
+	if (DelayAnalysisFile == NULL){
+		LOGE("File delaymix.cpm Creation Failed.");
+	}
+
+	timestamp = 0;
+	while(on)
+	{
+		/*--- Recording. Egress Direction (Tx) ---*/
+
+		samps = android_AudioIn(p,inbuffer,VECSAMPS_MONO);
+
+		for (i=0; i<samps; i++){
+			sample = inbuffer[i]*32768.0f;
+			sample = (sample>= 32767.0f?  32767: sample);
+			sample = (sample<=-32768.0f? -32768: sample);
+
+			TxIn[i] = (short int)sample;
+		}
+		fwrite(TxIn, sizeof(short int), samps, TxInFile);
+
+		/*--- Playing. Ingress Direction (Rx) ---*/
+
+		if (silenceFilling > 0){
+			for (i=0; i<samps; i++) RxIn[i] = 0;
+			silenceFilling -= samps;
+		}
+		else
+		{
+			if(fread(RxIn, sizeof(short int), samps,RxInFile) != samps){
+				//Rewind to Loop
+				fseek(RxInFile, 0L, SEEK_SET);
+				for (i=0; i<samps; i++) RxIn[i] = 0;
+				//Insert 5 seconds silent
+				silenceFilling = 5 * SR;
+			}
+		}
+		for (i = 0, j=0; i < samps; i++, j+=2){
+			outbuffer[j] = outbuffer[j+1] = RxIn[i]*CONVMYFLT;
+		}
+		android_AudioOut(p,outbuffer,samps*2);
+
+		/*--- For Delay Analysis ---*/
+		if (DelayAnalysisFile != NULL){
+			for (i=0,j=0; i < samps; i++, j+=2){
+				MixIn[j  ] = RxIn[i];
+				MixIn[j+1] = TxIn[i];
+			}
+			fwrite(MixIn, sizeof(short int), samps*2, DelayAnalysisFile);
+		}
+
+		timestamp += samps;
+	}
+	android_CloseAudioDevice(p);
+
+	fclose(RxInFile);
+	fclose(TxInFile);
+	if (DelayAnalysisFile != NULL){ fclose(DelayAnalysisFile); }
+	return;
 }
 
 void stop_process(){
-  on = 0;
+	on = 0;
 }
